@@ -34,6 +34,10 @@ Open `train_dl.ipynb` and run all cells. It clones this repo, loads `datasets/se
 baseline and saves `models/` and `results/`. A GPU is optional. On Kaggle switch Internet on.
 Same thing from a terminal: `python train_dl.py`.
 
+`train_mendeley.ipynb` does the whole larger-dataset pipeline **inside Colab/Kaggle** (download the
+Mendeley squat videos, MediaPipe keypoints, sequences, train, final test on locked-away people).
+Use a GPU runtime; Kaggle needs Internet ON. Nothing is downloaded to your laptop.
+
 Rebuilding the data from scratch: `python get_dataset.py squat` (Mendeley set) or download the CFRep
 squat videos, then `python extract_keypoints.py <folder>` and `python build_sequences.py cfrep`.
 

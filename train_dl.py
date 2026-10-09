@@ -57,17 +57,17 @@ def augment(x):
     return x * torch.empty(b, c, 1, device=x.device).uniform_(0.97, 1.03) + 0.01 * torch.randn_like(x)
 
 
-def train_one(arch, xtr, dtr, ytr, epochs, seed, lr=3e-3):
+def train_one(arch, xtr, dtr, ytr, epochs, seed, lr=3e-3, batch=32):
     torch.manual_seed(seed)
     model = ARCHS[arch](xtr.shape[1]).to(DEVICE)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=lr, total_steps=epochs * ((len(xtr) + 31) // 32))
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=lr, total_steps=epochs * ((len(xtr) + batch - 1) // batch))
     counts = torch.bincount(ytr, minlength=2).float().clamp(min=1)
     weight = (counts.sum() / (2 * counts)).to(DEVICE)                          # rarer class counts for more
     xtr, dtr, ytr = xtr.to(DEVICE), dtr.to(DEVICE), ytr.to(DEVICE)
     for _ in range(epochs):
         model.train()
-        for idx in torch.randperm(len(xtr), device=DEVICE).split(32):
+        for idx in torch.randperm(len(xtr), device=DEVICE).split(batch):
             if len(idx) < 2:
                 continue
             loss = F.cross_entropy(model(augment(xtr[idx]), dtr[idx]), ytr[idx], weight=weight)
@@ -120,24 +120,42 @@ def report(name, y, pred, score, views):
           f"{m['auc']:>7.2f}   | F1 by view: {per_view}")
 
 
-def rule_baseline(d, key, invalid_if_low):
-    """Leave-one-person-out predictions of a one-threshold rule on d[key] (threshold learned on the other people)."""
+def rule_baseline(d, key, invalid_if_low, folds=0):
+    """Held-out-person predictions of a one-threshold rule on d[key] (threshold learned on the other people)."""
     s, yn, person = d[key], d["y"], d["person"]
     pred = np.zeros(len(yn), bool)
-    for p in sorted(set(person)):
-        te = person == p
+    for held in person_folds(person, folds):
+        te = np.isin(person, held)
         thr = best_threshold(s[~te], yn[~te], invalid_if_low)
         pred[te] = (s[te] <= thr) if invalid_if_low else (s[te] >= thr)
     return pred, (-s if invalid_if_low else s)
 
 
-def lopo_probs(arch, x, dur, y, person, epochs=80, seeds=3):
-    """P(invalid) for every rep from a model that never saw that rep's person (average of `seeds` models)."""
+def person_folds(person, folds=0, seed=0):
+    """Groups of people that are held out together: one person per fold (leave-one-person-out, folds=0),
+    or `folds` roughly equal groups (faster when there are many people)."""
+    people = sorted(set(person))
+    if not folds or folds >= len(people):
+        return [[p] for p in people]
+    order = np.random.RandomState(seed).permutation(len(people))
+    return [[people[i] for i in order[k::folds]] for k in range(folds)]
+
+
+def split_people(person, n_test, seed=0):
+    """Boolean mask of reps from `n_test` randomly chosen people - the locked final test set."""
+    people = sorted(set(person))
+    test = np.random.RandomState(seed).choice(people, n_test, replace=False)
+    return np.isin(person, test)
+
+
+def lopo_probs(arch, x, dur, y, person, epochs=80, seeds=3, folds=0, batch=32):
+    """P(invalid) for every rep from models that never saw that rep's person (average of `seeds` models).
+    folds=0: leave-one-person-out; folds=k: k groups of people held out in turn."""
     prob = np.zeros(len(y))
-    for p in sorted(set(person)):
-        te = person == p
+    for held in person_folds(person, folds):
+        te = np.isin(person, held)
         tr = ~te
-        prob[te] = np.mean([predict(train_one(arch, x[tr], dur[tr], y[tr], epochs, seed), x[te], dur[te])
+        prob[te] = np.mean([predict(train_one(arch, x[tr], dur[tr], y[tr], epochs, seed, batch=batch), x[te], dur[te])
                             for seed in range(seeds)], 0)
     return prob
 
@@ -154,6 +172,7 @@ def main():
     ap.add_argument("--arch", choices=["cnn", "lstm", "both"], default="both")
     ap.add_argument("--epochs", type=int, default=80)
     ap.add_argument("--seeds", type=int, default=3, help="models averaged per fold (small data is noisy)")
+    ap.add_argument("--folds", type=int, default=0, help="0 = leave-one-person-out, k = k groups of people")
     ap.add_argument("--save", default="", help="train on everyone and save the model here (needs --arch cnn or lstm)")
     args = ap.parse_args()
     torch.set_num_threads(2)
@@ -164,12 +183,12 @@ def main():
     print(f"{'method (leave-one-person-out)':<24}{'P':>6}{'R':>6}{'F1':>6}{'balAcc':>7}{'AUC':>7}   (class = invalid rep)")
 
     for name, key, low in (("rule: hip below knee", "max_hbk", True), ("rule: knee angle", "min_knee", False)):
-        pred, score = rule_baseline(d, key, low)
+        pred, score = rule_baseline(d, key, low, args.folds)
         report(name, yn, pred, score, view)
 
     archs = ["cnn", "lstm"] if args.arch == "both" else [args.arch]
     for arch in archs:
-        prob = lopo_probs(arch, x, dur, y, person, args.epochs, args.seeds)
+        prob = lopo_probs(arch, x, dur, y, person, args.epochs, args.seeds, args.folds)
         report(f"DL: {arch.upper()} ({args.seeds} seeds)", yn, prob >= 0.5, prob, view)
 
     if args.save:
