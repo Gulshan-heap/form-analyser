@@ -20,6 +20,7 @@ class PoseFeatures:
     view_ratio: float            # shoulder width / torso length
     view: str = "side"           # filled in later: front / diagonal / side
     vis: float = 1.0
+    hip_below_knee: float = 0.0  # (hip y - knee y) / thigh length, >0 = hip lower than knee (full-depth squat)
 
 
 def _p(lm, i, w, h):
@@ -77,7 +78,11 @@ def compute(lm, w, h, min_vis=0.5) -> Optional[PoseFeatures]:
     torso = np.linalg.norm((sh_l + sh_r) / 2 - (hip_l + hip_r) / 2)
     view_ratio = float(np.linalg.norm(sh_l - sh_r) / torso) if torso > 1e-6 else 0.0
 
-    return PoseFeatures(side, knee_angle, hip_angle, lean, knee_fwd, ratio, view_ratio, vis=vis)
+    thigh = np.linalg.norm(hip - knee)
+    hip_below = float((hip[1] - knee[1]) / thigh) if thigh > 1e-6 else 0.0
+
+    return PoseFeatures(side, knee_angle, hip_angle, lean, knee_fwd, ratio, view_ratio, vis=vis,
+                        hip_below_knee=hip_below)
 
 
 class ViewEstimator:

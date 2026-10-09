@@ -23,6 +23,19 @@ feedback.py    what to say, when (priority + repeat + cooldown)
 overlay.py     skeleton, counter, gauge, banner
 logger.py      reps.csv  (fill the 'label' column by hand on Day 2)
 bench.py       FPS / per-stage latency  -> your Pi-performance numbers
+get_dataset.py        download one exercise of the Mendeley multi-view video set
+extract_keypoints.py  run MediaPipe once per video, cache landmarks
+build_sequences.py    labelled reps -> fixed-length joint-angle sequences
+train_dl.py           Analyser B: 1D-CNN / BiLSTM, leave-one-person-out vs rule baseline
+
+## Train the deep model (Colab / Kaggle / laptop)
+Open `train_dl.ipynb` and run all cells. It clones this repo, loads `datasets/sequences_cfrep.npz`
+(no videos needed), trains a 1D-CNN and a BiLSTM leave-one-person-out, compares them with the rule
+baseline and saves `models/` and `results/`. A GPU is optional. On Kaggle switch Internet on.
+Same thing from a terminal: `python train_dl.py`.
+
+Rebuilding the data from scratch: `python get_dataset.py squat` (Mendeley set) or download the CFRep
+squat videos, then `python extract_keypoints.py <folder>` and `python build_sequences.py cfrep`.
 
 ## Test without camera/model
     python tests/test_logic.py

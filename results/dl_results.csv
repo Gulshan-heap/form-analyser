@@ -1,0 +1,5 @@
+method,precision,recall,f1,balanced_acc,auc,F1 front,F1 diagonal,F1 side
+Rule: hip below knee,0.493,0.523,0.507,0.676,0.786,0.333,0.649,0.267
+Rule: knee angle,0.698,0.462,0.556,0.699,0.758,0.5,0.698,0.0
+DL: CNN,0.541,0.708,0.613,0.759,0.834,0.545,0.73,0.438
+DL: LSTM,0.542,0.692,0.608,0.753,0.804,0.667,0.659,0.4
